@@ -1,0 +1,299 @@
+name: Build Kivy APK with Buildozer
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # تثبيت Java 8 (الأكثر استقراراً مع Android SDK)
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: '8'
+          distribution: 'adopt'
+
+      # تثبيت Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          api-level: 30
+          build-tools: 30.0.3
+          ndk-version: 23.2.8568313
+
+      # تثبيت متطلبات النظام
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            ffmpeg \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            libportmidi-dev \
+            libswscale-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            zlib1g-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            ccache \
+            autotools-dev \
+            autoconf \
+            libtool \
+            pkg-config
+
+      # تثبيت Python packages
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade setuptools wheel
+          pip install "cython==0.29.33"
+          pip install "buildozer==1.5.0"
+          pip install "kivy==2.1.0"
+          pip install colorama appdirs sh jinja2 six
+
+      # إنشاء الملفات المطلوبة
+      - name: Create required files
+        run: |
+          # إنشاء ملف main.py يشير إلى mobile_app.py
+          cat > main.py << 'EOF'
+          #!/usr/bin/env python3
+          # -*- coding: utf-8 -*-
+          
+          """
+          نقطة دخول التطبيق - Smart Calculator
+          """
+          
+          __version__ = '1.0'
+          
+          from mobile_app import CalculatorApp
+          
+          if __name__ == '__main__':
+              CalculatorApp().run()
+          EOF
+          
+          # إنشاء أيقونة بسيطة (512x512 PNG)
+          python3 -c "
+          from PIL import Image, ImageDraw, ImageFont
+          import os
+          
+          # إنشاء أيقونة
+          size = 512
+          img = Image.new('RGBA', (size, size), (33, 150, 243, 255))
+          draw = ImageDraw.Draw(img)
+          
+          # رسم دائرة
+          margin = 50
+          draw.ellipse([margin, margin, size-margin, size-margin], 
+                      fill=(255, 255, 255, 255), outline=(33, 150, 243, 255), width=10)
+          
+          # إضافة نص
+          try:
+              font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 80)
+          except:
+              font = ImageFont.load_default()
+          
+          text = '🧮'
+          bbox = draw.textbbox((0, 0), text, font=font)
+          text_width = bbox[2] - bbox[0]
+          text_height = bbox[3] - bbox[1]
+          
+          x = (size - text_width) // 2
+          y = (size - text_height) // 2
+          draw.text((x, y), text, fill=(33, 150, 243, 255), font=font)
+          
+          img.save('icon.png')
+          
+          # إنشاء شاشة البداية
+          splash_img = Image.new('RGBA', (720, 1280), (33, 150, 243, 255))
+          splash_draw = ImageDraw.Draw(splash_img)
+          
+          # إضافة نص للشاشة
+          try:
+              title_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 60)
+              subtitle_font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 40)
+          except:
+              title_font = ImageFont.load_default()
+              subtitle_font = ImageFont.load_default()
+          
+          title_text = 'Smart Calculator'
+          subtitle_text = 'حاسبة الجمع الذكية'
+          
+          # حساب موضع النص
+          title_bbox = splash_draw.textbbox((0, 0), title_text, font=title_font)
+          title_width = title_bbox[2] - title_bbox[0]
+          title_x = (720 - title_width) // 2
+          
+          subtitle_bbox = splash_draw.textbbox((0, 0), subtitle_text, font=subtitle_font)
+          subtitle_width = subtitle_bbox[2] - subtitle_bbox[0]
+          subtitle_x = (720 - subtitle_width) // 2
+          
+          # رسم النص
+          splash_draw.text((title_x, 500), title_text, fill=(255, 255, 255, 255), font=title_font)
+          splash_draw.text((subtitle_x, 600), subtitle_text, fill=(255, 255, 255, 255), font=subtitle_font)
+          
+          # إضافة أيقونة كبيرة
+          large_icon = img.resize((200, 200))
+          splash_img.paste(large_icon, (260, 250), large_icon)
+          
+          splash_img.save('presplash.png')
+          print('تم إنشاء الأيقونة وشاشة البداية')
+          "
+          
+          # إنشاء ملف خط عربي وهمي
+          echo "dummy font file" > arabic_font.ttf
+          
+          # إنشاء مجلد fonts كبديل
+          mkdir -p fonts
+          echo "dummy font file" > fonts/arabic_font.ttf
+          
+          # التحقق من إنشاء الملفات
+          ls -la main.py icon.png presplash.png arabic_font.ttf
+
+      # تحديث buildozer.spec
+      - name: Update buildozer.spec
+        run: |
+          cat > buildozer.spec << 'EOF'
+          [app]
+          title = Smart Calculator
+          package.name = smartcalculator
+          package.domain = com.example.smartcalc
+          
+          source.dir = .
+          source.include_exts = py,png,jpg,kv,atlas,ttf,txt
+          source.exclude_dirs = tests,bin,.buildozer,.git,__pycache__
+          source.exclude_patterns = license,*.pyc,*.pyo
+          
+          version = 1.0
+          version.regex = __version__ = ['"]([^'"]*)['"]
+          version.filename = %(source.dir)s/main.py
+          
+          requirements = python3,kivy==2.1.0,pillow,android,pyjnius
+          
+          icon.filename = %(source.dir)s/icon.png
+          presplash.filename = %(source.dir)s/presplash.png
+          
+          orientation = portrait
+          fullscreen = 0
+          
+          android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,ACCESS_NETWORK_STATE
+          
+          android.api = 30
+          android.minapi = 21
+          android.ndk = 23.2.8568313
+          android.sdk = 30
+          android.accept_sdk_license = True
+          android.archs = armeabi-v7a,arm64-v8a
+          
+          android.gradle_dependencies = 
+          android.add_java_dir = 
+          android.add_compile_options = 
+          android.add_gradle_repositories = 
+          android.gradle_repositories = google(), mavenCentral()
+          android.enable_androidx = False
+          android.compile_options = 1.8, 1.8
+          
+          android.debug = 1
+          android.private_storage = True
+          android.wakelock = False
+          
+          p4a.bootstrap = sdl2
+          p4a.branch = master
+          p4a.local_recipes = 
+          
+          [buildozer]
+          log_level = 2
+          warn_on_root = 1
+          EOF
+
+      # تنظيف وإعداد Buildozer
+      - name: Initialize Buildozer
+        run: |
+          buildozer android clean
+          buildozer android update --verbose
+
+      # بناء APK مع معالجة الأخطاء
+      - name: Build APK
+        run: |
+          # تعيين متغيرات البيئة
+          export ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT
+          export ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT
+          export ANDROID_HOME=$ANDROID_SDK_ROOT
+          export PATH=$PATH:$ANDROID_SDK_ROOT/tools:$ANDROID_SDK_ROOT/platform-tools
+          
+          # بناء APK
+          buildozer android debug --verbose
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+
+      # التحقق من وجود APK
+      - name: Check APK existence
+        run: |
+          echo "البحث عن ملفات APK..."
+          find . -name "*.apk" -type f
+          ls -la bin/ || echo "مجلد bin غير موجود"
+
+      # رفع APK كـ artifact
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartCalculator-APK
+          path: |
+            bin/*.apk
+            **/*.apk
+          retention-days: 30
+          if-no-files-found: warn
+
+      # رفع logs في حالة الفشل
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            .buildozer/
+            buildozer.log
+            *.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # معلومات التشخيص
+      - name: Debug information
+        if: always()
+        run: |
+          echo "=== معلومات النظام ==="
+          uname -a
+          python --version
+          pip list | grep -E "(kivy|buildozer|cython)"
+          
+          echo "=== متغيرات البيئة ==="
+          echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+          echo "ANDROID_NDK_ROOT: $ANDROID_NDK_ROOT"
+          
+          echo "=== محتويات المجلد ==="
+          ls -la
+          
+          echo "=== محتويات مجلد .buildozer ==="
+          ls -la .buildozer/ || echo "مجلد .buildozer غير موجود"
+          
+          echo "=== آخر سطور من buildozer.log ==="
+          tail -50 .buildozer/buildozer.log || echo "لا يوجد ملف buildozer.log"
