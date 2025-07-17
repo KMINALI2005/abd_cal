@@ -12,11 +12,11 @@ source.exclude_patterns = license,*.pyc,*.pyo,*.spec
 
 # إصدار التطبيق
 version = 1.0
-version.regex = __version__ = ['"]([^'"]*)['"]
+version.regex = __version__ = [\"\"]([^\n\"\"]*)[\"\"]
 version.filename = %(source.dir)s/main.py
 
 # متطلبات Python - محدثة لتتناسق مع الكود
-requirements = python3,kivy==2.1.0,pillow,android,pyjnius
+requirements = python3,kivy==2.1.0,pillow,android,pyjnius,arabic_reshaper,python-bidi
 
 # ملفات الواجهة
 icon.filename = %(source.dir)s/icon.png
@@ -45,7 +45,7 @@ android.add_java_dir =
 android.add_compile_options = 
 android.add_gradle_repositories = 
 android.gradle_repositories = google(), mavenCentral()
-android.enable_androidx = False
+android.enable_androidx = True
 android.compile_options = 1.8, 1.8
 
 # إعدادات التطبيق
