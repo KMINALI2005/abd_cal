@@ -1,0 +1,61 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18' # Use a version compatible with the project
+        cache: 'npm'
+        cache-dependency-path: invoice-app-rtl/package-lock.json
+
+    - name: Install dependencies
+      run: |
+        cd invoice-app-rtl
+        npm ci
+
+    - name: Build Next.js app
+      run: |
+        cd invoice-app-rtl
+        npm run build
+
+    - name: Add Android platform and Sync
+      run: |
+        cd invoice-app-rtl
+        # The npx command was failing in the interactive environment,
+        # but it should work in the standard GitHub Actions environment.
+        # We add android, then sync.
+        npx cap add android
+        npx cap sync
+
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Set up Gradle
+      uses: gradle/gradle-build-action@v2
+
+    - name: Build Android App (Debug)
+      run: |
+        cd invoice-app-rtl/android
+        ./gradlew assembleDebug
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: invoice-app-debug
+        path: invoice-app-rtl/android/app/build/outputs/apk/debug/app-debug.apk
